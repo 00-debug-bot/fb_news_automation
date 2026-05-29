@@ -1,6 +1,6 @@
 """
 Trends Fetcher Module
-Fetches top trending Indian Google Trends topics using PyTrends
+Fetches top trending Indian topics using PyTrends (primary) with NewsData.io fallback
 """
 
 import logging
@@ -10,6 +10,8 @@ from pytrends.request import TrendReq
 from pytrends.exceptions import ResponseError
 import time
 import random
+import os
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +19,9 @@ logger = logging.getLogger(__name__)
 class TrendsFetcher:
     """Fetch trending topics from Google Trends for India region"""
     
-    def __init__(self):
-        """Initialize PyTrends client"""
+    def __init__(self, newsdata_api_key: str = None):
+        """Initialize fetcher with optional NewsData.io fallback key"""
+        self.newsdata_api_key = newsdata_api_key or os.getenv('NEWSDATA_API_KEY', 'pub_2b3957a1856a454484d792770c04d4e8')
         self.pytrends = None
         self._init_client()
     
@@ -29,11 +32,12 @@ class TrendsFetcher:
             logger.info("PyTrends client initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize PyTrends client: {e}")
-            raise
+            self.pytrends = None
     
     def fetch_trending_topics(self, limit: int = 10) -> List[Dict[str, str]]:
         """
-        Fetch top trending topics from Google Trends for India
+        Fetch top trending topics from Google Trends for India.
+        Falls back to NewsData.io if PyTrends fails (common on cloud hosting).
         
         Args:
             limit: Maximum number of trends to return
@@ -41,45 +45,97 @@ class TrendsFetcher:
         Returns:
             List of dictionaries containing trend information
         """
-        try:
-            # Add random delay to avoid rate limiting
-            time.sleep(random.uniform(1, 3))
-            
-            # Get trending searches for India
-            trending_df = self.pytrends.trending_searches(pn='india')
-            
-            if trending_df.empty:
-                logger.warning("No trending topics found")
-                return []
-            
-            trends = []
-            for _, row in trending_df.head(limit).iterrows():
-                trend_data = {
-                    'title': str(row[0]).strip(),
-                    'traffic': str(row[1]) if len(row) > 1 else 'N/A',
-                    'fetched_at': datetime.utcnow().isoformat(),
-                    'source': 'google_trends',
-                    'region': 'IN'
-                }
-                trends.append(trend_data)
-                logger.info(f"Fetched trend: {trend_data['title']}")
-            
-            logger.info(f"Successfully fetched {len(trends)} trending topics")
-            return trends
-            
-        except ResponseError as e:
-            logger.error(f"PyTrends rate limit or response error: {e}")
-            # Wait and retry once
-            time.sleep(5)
+        # Try PyTrends first
+        if self.pytrends:
             try:
-                self._init_client()
-                return self.fetch_trending_topics(limit)
-            except Exception as retry_error:
-                logger.error(f"Retry failed: {retry_error}")
-                return []
-        except Exception as e:
-            logger.error(f"Error fetching trending topics: {e}")
-            return []
+                time.sleep(random.uniform(1, 3))
+                trending_df = self.pytrends.trending_searches(pn='india')
+                
+                if not trending_df.empty:
+                    trends = []
+                    for _, row in trending_df.head(limit).iterrows():
+                        trend_data = {
+                            'title': str(row[0]).strip(),
+                            'traffic': str(row[1]) if len(row) > 1 else 'N/A',
+                            'fetched_at': datetime.utcnow().isoformat(),
+                            'source': 'google_trends',
+                            'region': 'IN'
+                        }
+                        trends.append(trend_data)
+                        logger.info(f"Fetched trend: {trend_data['title']}")
+                    
+                    logger.info(f"Successfully fetched {len(trends)} trending topics via PyTrends")
+                    return trends
+                    
+            except ResponseError as e:
+                logger.warning(f"PyTrends error (common on cloud hosting): {e}")
+            except Exception as e:
+                logger.warning(f"PyTrends unexpected error: {e}")
+        
+        # Fallback to NewsData.io for trending topics
+        logger.info("Falling back to NewsData.io for trending topics...")
+        return self._fetch_trends_from_newsdata(limit)
+    
+    def _fetch_trends_from_newsdata(self, limit: int = 10) -> List[Dict[str, str]]:
+        """
+        Fetch trending topics from NewsData.io as fallback
+        
+        Args:
+            limit: Maximum number of trends to return
+            
+        Returns:
+            List of trend dictionaries
+        """
+        # Common Indian news topics to use as search queries
+        india_news_categories = [
+            'India', 'Indian politics', 'Bollywood', 'cricket India',
+            'Indian economy', 'technology India', 'Delhi news',
+            'Mumbai news', 'breaking news India'
+        ]
+        
+        trends = []
+        seen_titles = set()
+        
+        for category in india_news_categories[:3]:  # Use first 3 categories
+            try:
+                url = (
+                    f"https://newsdata.io/api/1/news"
+                    f"?apikey={self.newsdata_api_key}"
+                    f"&q={category}"
+                    f"&language=en"
+                    f"&country=in"
+                    f"&size=5"
+                )
+                response = requests.get(url)
+                response.raise_for_status()
+                data = response.json()
+                
+                for item in data.get('results', []):
+                    title = item.get('title', '').strip()
+                    if title and title not in seen_titles and len(title) > 10:
+                        seen_titles.add(title)
+                        trend_data = {
+                            'title': title[:100],  # Truncate very long titles
+                            'traffic': 'N/A',
+                            'fetched_at': datetime.utcnow().isoformat(),
+                            'source': 'newsdata_fallback',
+                            'region': 'IN',
+                            'is_news': True
+                        }
+                        trends.append(trend_data)
+                        
+                        if len(trends) >= limit:
+                            break
+                
+                if len(trends) >= limit:
+                    break
+                    
+            except Exception as e:
+                logger.warning(f"Error fetching trends from NewsData.io: {e}")
+                continue
+        
+        logger.info(f"Fetched {len(trends)} trending topics via NewsData.io fallback")
+        return trends[:limit]
     
     def filter_news_related(self, trends: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
@@ -91,7 +147,6 @@ class TrendsFetcher:
         Returns:
             Filtered list of news-related trends
         """
-        # Keywords that indicate news-related content
         news_keywords = [
             'breaking', 'news', 'update', 'report', 'developing',
             'live', 'just in', 'exclusive', 'investigation', 'scandal',
@@ -122,12 +177,15 @@ class TrendsFetcher:
         
         filtered = []
         for trend in trends:
+            # If already marked as news from fallback, keep it
+            if trend.get('is_news'):
+                filtered.append(trend)
+                continue
+                
             title_lower = trend['title'].lower()
             
-            # Check if any news keyword is in the title
             is_news_related = any(keyword in title_lower for keyword in news_keywords)
             
-            # Also include if it looks like a proper news topic
             if not is_news_related:
                 words = trend['title'].split()
                 if len(words) >= 2:
@@ -156,31 +214,32 @@ class TrendsFetcher:
         Returns:
             List of daily trending topics
         """
-        try:
-            time.sleep(random.uniform(1, 3))
-            
-            daily_trends = self.pytrends.daily_trends(expiry=0, limit=limit)
-            
-            if daily_trends.empty:
-                return []
-            
-            trends = []
-            for _, row in daily_trends.iterrows():
-                trend_data = {
-                    'title': str(row['title']).strip() if 'title' in row else str(row.iloc[0]).strip(),
-                    'traffic': str(row['traffic']) if 'traffic' in row else 'N/A',
-                    'description': str(row['description']) if 'description' in row else '',
-                    'fetched_at': datetime.utcnow().isoformat(),
-                    'source': 'google_trends_daily',
-                    'region': 'IN'
-                }
-                trends.append(trend_data)
-            
-            return self.filter_news_related(trends)
-            
-        except Exception as e:
-            logger.error(f"Error fetching daily trends: {e}")
-            return []
+        # Try PyTrends first
+        if self.pytrends:
+            try:
+                time.sleep(random.uniform(1, 3))
+                daily_trends = self.pytrends.daily_trends(expiry=0, limit=limit)
+                
+                if not daily_trends.empty:
+                    trends = []
+                    for _, row in daily_trends.iterrows():
+                        trend_data = {
+                            'title': str(row['title']).strip() if 'title' in row else str(row.iloc[0]).strip(),
+                            'traffic': str(row['traffic']) if 'traffic' in row else 'N/A',
+                            'description': str(row['description']) if 'description' in row else '',
+                            'fetched_at': datetime.utcnow().isoformat(),
+                            'source': 'google_trends_daily',
+                            'region': 'IN'
+                        }
+                        trends.append(trend_data)
+                    
+                    return self.filter_news_related(trends)
+                    
+            except Exception as e:
+                logger.warning(f"PyTrends daily trends error: {e}")
+        
+        # Fallback to NewsData.io
+        return self._fetch_trends_from_newsdata(limit)
 
 
 def main():
@@ -195,6 +254,8 @@ def main():
         print(f"\nFound {len(trends)} trending topics:")
         for i, trend in enumerate(trends[:5], 1):
             print(f"{i}. {trend['title']} (Traffic: {trend['traffic']})")
+    else:
+        print("No trending topics found")
     
     print("\nFiltering news-related topics...")
     news_trends = fetcher.filter_news_related(trends)
