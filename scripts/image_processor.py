@@ -1,6 +1,6 @@
 """
 Image Processor Module
-Creates professional news card images using Pillow
+Creates professional news card images using Pillow with news-outlet style design
 """
 
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ImageProcessor:
-    """Process images to create professional news cards"""
+    """Process images to create professional news cards with news-outlet styling"""
     
     def __init__(self, output_dir: str = None):
         """
@@ -26,6 +26,13 @@ class ImageProcessor:
         """
         self.output_dir = output_dir or os.getenv('OUTPUT_DIR', '../output')
         self.canvas_size = (1080, 1080)
+        
+        # News-outlet brand colors
+        self.RED = (200, 16, 26)       # Bold news red
+        self.DARK_RED = (150, 10, 18)   # Darker red for accents
+        self.WHITE = (255, 255, 255)
+        self.BLACK = (0, 0, 0)
+        self.DARK_BG = (10, 10, 15)     # Near-black for overlays
         
         # Try to load fonts
         self._load_fonts()
@@ -41,10 +48,14 @@ class ImageProcessor:
             "C:/Windows/Fonts/arial.ttf",
             "C:/Windows/Fonts/arialbd.ttf",
             "C:/Windows/Fonts/arialbi.ttf",
+            "C:/Windows/Fonts/times.ttf",
+            "C:/Windows/Fonts/timesbd.ttf",
+            "C:/Windows/Fonts/impact.ttf",
             # Linux fonts
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
             # Mac fonts
             "/Library/Fonts/Arial.ttf",
             "/Library/Fonts/Arial Bold.ttf",
@@ -57,7 +68,7 @@ class ImageProcessor:
         
         for path in font_paths:
             if os.path.exists(path):
-                if 'Bold' in path or 'bd' in path.lower():
+                if 'Bold' in path or 'bd' in path.lower() or 'timesbd' in path.lower():
                     if not self.font_bold:
                         self.font_bold = path
                 elif not self.font_regular:
@@ -120,9 +131,8 @@ class ImageProcessor:
             
             image = Image.open(io.BytesIO(response.content))
             
-            # Convert to RGB if necessary (handle PNG with transparency, etc.)
+            # Convert to RGB if necessary
             if image.mode in ('RGBA', 'LA', 'P'):
-                # Create white background
                 background = Image.new('RGB', image.size, (255, 255, 255))
                 if image.mode == 'P':
                     image = image.convert('RGBA')
@@ -144,7 +154,7 @@ class ImageProcessor:
     def create_news_card(self, image: Image.Image, headline: str, 
                         logo_path: str = None) -> Image.Image:
         """
-        Create a professional news card from an image
+        Create a professional news card from an image with news-outlet style
         
         Args:
             image: Source PIL Image
@@ -167,29 +177,34 @@ class ImageProcessor:
         
         # Enhance contrast slightly
         enhancer = ImageEnhance.Contrast(canvas)
-        canvas = enhancer.enhance(1.1)
+        canvas = enhancer.enhance(1.15)
         
         # Add slight sharpening
         canvas = canvas.filter(ImageFilter.SHARPEN)
         
-        # Create gradient overlay
-        overlay = self._create_gradient_overlay(self.canvas_size)
+        # Create dark gradient overlay for bottom text area
+        overlay = self._create_news_overlay(self.canvas_size)
         canvas = Image.alpha_composite(canvas.convert('RGBA'), overlay)
         
         # Convert back to RGB
         canvas = canvas.convert('RGB')
         
+        # Add top red bar (news channel style)
+        canvas = self._add_top_red_bar(canvas)
+        
         # Add BREAKING label
         canvas = self._add_breaking_label(canvas)
         
-        # Add headline
+        # Add headline in RED
         canvas = self._add_headline(canvas, headline)
+        
+        # Add red accent line below headline
+        canvas = self._add_red_accent_line(canvas)
         
         # Add logo/watermark
         if logo_path and os.path.exists(logo_path):
             canvas = self._add_watermark(canvas, logo_path)
         else:
-            # Add text watermark
             canvas = self._add_text_watermark(canvas, "FB News")
         
         # Add subtle vignette effect
@@ -201,34 +216,22 @@ class ImageProcessor:
                      target_size: Tuple[int, int]) -> Image.Image:
         """
         Resize image to cover target size (like CSS object-fit: cover)
-        
-        Args:
-            image: Source image
-            target_size: Target dimensions
-            
-        Returns:
-            Resized image
         """
         target_w, target_h = target_size
         img_w, img_h = image.size
         
-        # Calculate aspect ratios
         img_ratio = img_w / img_h
         target_ratio = target_w / target_h
         
         if img_ratio > target_ratio:
-            # Image is wider, fit to height
             new_h = target_h
             new_w = int(new_h * img_ratio)
         else:
-            # Image is taller, fit to width
             new_w = target_w
             new_h = int(new_w / img_ratio)
         
-        # Resize
         image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
         
-        # Center crop
         left = (new_w - target_w) // 2
         top = (new_h - target_h) // 2
         right = left + target_w
@@ -238,53 +241,55 @@ class ImageProcessor:
         
         return image
     
-    def _create_gradient_overlay(self, size: Tuple[int, int]) -> Image.Image:
+    def _create_news_overlay(self, size: Tuple[int, int]) -> Image.Image:
         """
-        Create a dark gradient overlay for the bottom portion
-        
-        Args:
-            size: Canvas size
-            
-        Returns:
-            RGBA overlay image
+        Create a professional dark gradient overlay with extra darkness at bottom
         """
         overlay = Image.new('RGBA', size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
         w, h = size
         
-        # Gradient from transparent (top) to dark (bottom)
-        # Start gradient at 50% height
-        gradient_start = int(h * 0.45)
+        # Start gradient earlier for news style - at 35%
+        gradient_start = int(h * 0.35)
         
-        # Create gradient with multiple stops
+        # Create gradient that gets darker towards bottom
         for y in range(gradient_start, h):
-            # Calculate alpha (0 to ~200)
             progress = (y - gradient_start) / (h - gradient_start)
-            alpha = int(progress * 200)
-            
-            # Dark blue-black color for professional look
-            color = (10, 15, 30, alpha)
+            # More aggressive darkening
+            alpha = int(progress * 220)
+            color = (0, 0, 0, alpha)
             draw.line([(0, y), (w, y)], fill=color)
         
+        # Add a dark strip at the very bottom for extra contrast
+        bottom_strip_start = int(h * 0.82)
+        for y in range(bottom_strip_start, h):
+            alpha = 180 + int(((y - bottom_strip_start) / (h - bottom_strip_start)) * 75)
+            alpha = min(alpha, 255)
+            draw.line([(0, y), (w, y)], fill=(0, 0, 0, alpha))
+        
         return overlay
+    
+    def _add_top_red_bar(self, image: Image.Image) -> Image.Image:
+        """Add a red bar at the very top of the image (news channel style)"""
+        draw = ImageDraw.Draw(image)
+        w, _ = image.size
+        
+        # Thin red line at very top
+        bar_height = 5
+        draw.rectangle([(0, 0), (w, bar_height)], fill=self.RED)
+        
+        return image
     
     def _add_breaking_label(self, image: Image.Image) -> Image.Image:
         """
         Add a red BREAKING label to top-left
-        
-        Args:
-            image: Source image
-            
-        Returns:
-            Image with label
         """
         draw = ImageDraw.Draw(image)
         w, h = image.size
         
-        # Label settings
-        label_text = "BREAKING"
-        font_size = 36
+        label_text = "BREAKING NEWS"
+        font_size = 40
         font = self._get_font(font_size, bold=True)
         
         # Get text size
@@ -293,64 +298,58 @@ class ImageProcessor:
         text_h = bbox[3] - bbox[1]
         
         # Padding
-        padding = 20
-        label_w = text_w + padding * 2
-        label_h = text_h + padding
+        padding_h = 16
+        padding_v = 10
+        label_w = text_w + padding_h * 2
+        label_h = text_h + padding_v * 2
         
         # Position (top-left with margin)
-        margin = 30
+        margin = 25
         label_x = margin
-        label_y = margin
+        label_y = margin + 15  # Below the red top bar
         
-        # Draw red background
-        draw.rectangle(
+        # Draw red background rectangle
+        draw.rounded_rectangle(
             [(label_x, label_y), (label_x + label_w, label_y + label_h)],
-            fill=(220, 20, 20)  # Red
+            radius=4,
+            fill=self.RED
         )
         
-        # Draw text
-        text_x = label_x + padding
-        text_y = label_y + (label_h - text_h) // 2
-        draw.text((text_x, text_y), label_text, fill=(255, 255, 255), font=font)
+        # Draw white text
+        text_x = label_x + padding_h
+        text_y = label_y + padding_v
+        draw.text((text_x, text_y), label_text, fill=self.WHITE, font=font)
         
         return image
     
     def _add_headline(self, image: Image.Image, headline: str) -> Image.Image:
         """
-        Add headline text to the lower portion
-        
-        Args:
-            image: Source image
-            headline: Headline text
-            
-        Returns:
-            Image with headline
+        Add headline text in RED color (news-outlet style) at the bottom portion
         """
         draw = ImageDraw.Draw(image)
         w, h = image.size
         
-        # Settings
-        font_size = 52
+        # LARGE font size for easy reading
+        font_size = 62
         font = self._get_font(font_size, bold=True)
         
-        # Text color with slight shadow for readability
-        text_color = (255, 255, 255)
+        # Text color: RED for news outlet feel
+        text_color = (220, 30, 35)  # Vivid red
         shadow_color = (0, 0, 0)
         
         # Wrap text if needed
-        max_width = w - 80
+        max_width = w - 100
         lines = self._wrap_text(draw, headline, font, max_width)
         
-        # Calculate total text height
-        line_height = font_size * 1.3
+        # Line spacing
+        line_height = int(font_size * 1.4)
         total_text_h = len(lines) * line_height
         
-        # Position (lower third, centered)
+        # Position in lower portion (around 65-70% down)
         text_y_start = int(h * 0.65)
         
-        # Draw each line with shadow
+        # Draw each line with shadow for readability
         for i, line in enumerate(lines):
-            # Get line dimensions
             bbox = draw.textbbox((0, 0), line, font=font)
             line_w = bbox[2] - bbox[0]
             
@@ -358,12 +357,36 @@ class ImageProcessor:
             text_x = (w - line_w) // 2
             text_y = text_y_start + i * line_height
             
-            # Draw shadow (slightly offset)
-            draw.text((text_x + 2, text_y + 2), line, fill=shadow_color, 
-                     font=font, stroke_width=1)
+            # Draw thick black shadow/outline for readability
+            for dx, dy in [(-2, -2), (-2, 2), (2, -2), (2, 2), (0, 2), (0, -2), (2, 0), (-2, 0)]:
+                draw.text((text_x + dx, text_y + dy), line, fill=shadow_color, font=font)
             
-            # Draw main text
+            # Draw main RED text on top
             draw.text((text_x, text_y), line, fill=text_color, font=font)
+        
+        return image
+    
+    def _add_red_accent_line(self, image: Image.Image) -> Image.Image:
+        """
+        Add a red accent line below the headline (news channel style)
+        """
+        draw = ImageDraw.Draw(image)
+        w, h = image.size
+        
+        # Position below headline area (around 88% down)
+        line_y = int(h * 0.88)
+        line_width = 4
+        line_length = 200
+        
+        # Center the accent line
+        line_x_start = (w - line_length) // 2
+        line_x_end = line_x_start + line_length
+        
+        # Draw red accent line
+        draw.rectangle(
+            [(line_x_start, line_y), (line_x_end, line_y + line_width)],
+            fill=self.RED
+        )
         
         return image
     
@@ -371,15 +394,6 @@ class ImageProcessor:
                   font: ImageFont.FreeTypeFont, max_width: int) -> list:
         """
         Wrap text to fit within max width
-        
-        Args:
-            draw: ImageDraw object
-            text: Text to wrap
-            font: Font to use
-            max_width: Maximum width
-            
-        Returns:
-            List of wrapped lines
         """
         words = text.split()
         lines = []
@@ -403,43 +417,28 @@ class ImageProcessor:
         # Limit to 3 lines max
         if len(lines) > 3:
             lines = lines[:3]
-            # Add ellipsis to last line if truncated
             if lines:
                 lines[-1] = lines[-1] + "..."
         
         return lines if lines else [text]
     
     def _add_watermark(self, image: Image.Image, logo_path: str) -> Image.Image:
-        """
-        Add logo watermark to bottom-right
-        
-        Args:
-            image: Source image
-            logo_path: Path to logo file
-            
-        Returns:
-            Image with watermark
-        """
+        """Add logo watermark to bottom-right"""
         try:
             logo = Image.open(logo_path)
             
-            # Convert to RGBA for transparency
             if logo.mode != 'RGBA':
                 logo = logo.convert('RGBA')
             
-            # Resize logo
-            logo_size = (120, 120)
+            logo_size = (100, 100)
             logo = logo.resize(logo_size, Image.Resampling.LANCZOS)
             
-            # Position (bottom-right with margin)
-            margin = 30
+            margin = 25
             x = image.width - logo_size[0] - margin
-            y = image.height - logo_size[1] - margin
+            y = image.height - logo_size[1] - margin - 30
             
-            # Make logo semi-transparent
             logo = Image.blend(logo, Image.new('RGBA', logo_size, (0, 0, 0, 0)), 0.3)
             
-            # Paste with mask
             image_rgba = image.convert('RGBA')
             image_rgba.paste(logo, (x, y), logo)
             
@@ -452,79 +451,52 @@ class ImageProcessor:
     def _add_text_watermark(self, image: Image.Image, text: str) -> Image.Image:
         """
         Add text watermark to bottom-right
-        
-        Args:
-            image: Source image
-            text: Watermark text
-            
-        Returns:
-            Image with watermark
         """
         draw = ImageDraw.Draw(image)
         
-        font_size = 18
-        font = self._get_font(font_size)
+        font_size = 20
+        font = self._get_font(font_size, bold=True)
         
         bbox = draw.textbbox((0, 0), text, font=font)
         text_w = bbox[2] - bbox[0]
         
-        margin = 30
+        margin = 25
         x = image.width - text_w - margin
-        y = image.height - font_size - margin
+        y = image.height - font_size - margin - 30
         
-        # Semi-transparent white
-        draw.text((x, y), text, fill=(255, 255, 255, 128), font=font)
+        # Semi-transparent red watermark
+        draw.text((x, y), text, fill=(200, 16, 26, 180), font=font)
         
         return image
     
-    def _add_vignette(self, image: Image.Image, intensity: float = 0.3) -> Image.Image:
+    def _add_vignette(self, image: Image.Image) -> Image.Image:
         """
         Add subtle vignette effect
-        
-        Args:
-            image: Source image
-            intensity: Vignette intensity
-            
-        Returns:
-            Image with vignette
         """
         w, h = image.size
         
-        # Create radial gradient
         overlay = Image.new('RGBA', (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
-        # Calculate center
         cx, cy = w // 2, h // 2
-        
-        # Calculate max distance from center
         max_dist = ((cx ** 2 + cy ** 2) ** 0.5)
         
-        # Draw vignette (darker edges)
         for y in range(h):
             for x in range(w):
                 dist = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
                 progress = dist / max_dist
                 
                 if progress > 0.4:
-                    alpha = int((progress - 0.4) * intensity * 255 * (1 - 0.4) / 0.6)
-                    alpha = min(alpha, 100)  # Cap at 100
+                    alpha = int((progress - 0.4) * 0.25 * 255 * (1 - 0.4) / 0.6)
+                    alpha = min(alpha, 80)
                     draw.point((x, y), fill=(0, 0, 0, alpha))
         
-        # Blend overlay
         result = Image.alpha_composite(image.convert('RGBA'), overlay)
         return result.convert('RGB')
     
     def save_image(self, image: Image.Image, filename: str = None) -> str:
         """
         Save image to output directory
-        
-        Args:
-            image: PIL Image to save
-            filename: Optional filename (auto-generated if not provided)
-            
-        Returns:
-            Path to saved file
         """
         if filename is None:
             timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
@@ -532,7 +504,6 @@ class ImageProcessor:
         
         filepath = os.path.join(self.output_dir, filename)
         
-        # Ensure output directory exists
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Save as high-quality JPEG
@@ -545,25 +516,13 @@ class ImageProcessor:
                         logo_path: str = None) -> Optional[str]:
         """
         Complete workflow: download image and create news card
-        
-        Args:
-            image_url: URL of source image
-            headline: Headline text
-            logo_path: Optional logo path
-            
-        Returns:
-            Path to saved news card or None
         """
-        # Download image
         image = self.download_image(image_url)
         if not image:
             logger.error("Failed to download image")
             return None
         
-        # Create news card
         news_card = self.create_news_card(image, headline, logo_path)
-        
-        # Save
         filepath = self.save_image(news_card)
         return filepath
 
@@ -574,9 +533,8 @@ def main():
     
     processor = ImageProcessor(output_dir="../output")
     
-    # Test with a sample image URL
     test_url = "https://picsum.photos/seed/news123/800/600.jpg"
-    test_headline = "Major Policy Changes Announced Today"
+    test_headline = "Major Policy Changes Announced Today by Government Officials"
     
     print("Processing test image...")
     result = processor.process_from_url(test_url, test_headline)
