@@ -55,7 +55,7 @@ def health_check():
     })
 
 
-@app.route('/run', methods=['POST'])
+@app.route('/run', methods=['GET', 'POST'])
 def run_automation():
     """
     Trigger automation cycle via API
