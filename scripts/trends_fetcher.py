@@ -21,7 +21,7 @@ class TrendsFetcher:
     
     def __init__(self, newsdata_api_key: str = None):
         """Initialize fetcher with optional NewsData.io fallback key"""
-        self.newsdata_api_key = newsdata_api_key or os.getenv('NEWSDATA_API_KEY', 'pub_2b3957a1856a454484d792770c04d4e8')
+        self.newsdata_api_key = (newsdata_api_key or os.getenv('NEWSDATA_API_KEY', 'pub_2b3957a1856a454484d792770c04d4e8')).strip()
         self.pytrends = None
         self._init_client()
     

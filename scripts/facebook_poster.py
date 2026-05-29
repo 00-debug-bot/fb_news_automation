@@ -23,8 +23,8 @@ class FacebookPoster:
             page_access_token: Facebook Page Access Token
             page_id: Facebook Page ID
         """
-        self.page_access_token = page_access_token or os.getenv('FB_PAGE_ACCESS_TOKEN')
-        self.page_id = page_id or os.getenv('FB_PAGE_ID')
+        self.page_access_token = (page_access_token or os.getenv('FB_PAGE_ACCESS_TOKEN', '')).strip()
+        self.page_id = (page_id or os.getenv('FB_PAGE_ID', '')).strip()
         self.base_url = "https://graph.facebook.com/v18.0"
         
         if not self.page_access_token:

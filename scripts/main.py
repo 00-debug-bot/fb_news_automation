@@ -246,16 +246,11 @@ class NewsAutomationSystem:
             return None
         
         # Step 3.5: Enhance with AI if API key available
-        ai_image_path = None
-        if os.getenv('OPENROUTER_API_KEY'):
+        if os.getenv('OPENROUTER_API_KEY', '').strip():
             try:
                 self.logger.info("Attempting AI image enhancement...")
-                from PIL import Image
-                original_image = Image.open(image_path)
                 ai_image = self.ai_enhancer.generate_news_image(headline)
                 if ai_image:
-                    # Save AI image
-                    from datetime import datetime
                     ai_filename = f"ai_enhanced_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.jpg"
                     ai_image_path = self.ai_enhancer.save_image(ai_image, ai_filename)
                     self.logger.info(f"AI image generated: {ai_image_path}")
@@ -266,8 +261,6 @@ class NewsAutomationSystem:
                     self.logger.warning("AI image generation failed, using original")
             except Exception as e:
                 self.logger.warning(f"AI enhancement failed: {e}, using original image")
-        
-        self.logger.info(f"Created news card: {image_path}")
         
         self.logger.info(f"Created news card: {image_path}")
         

@@ -25,7 +25,7 @@ class HeadlineGenerator:
             model: Model to use (default: google/gemma-7b-it:free)
             backup_model: Backup model (default: mistralai/mistral-7b-instruct:free)
         """
-        self.api_key = api_key or os.getenv('OPENROUTER_API_KEY')
+        self.api_key = (api_key or os.getenv('OPENROUTER_API_KEY', '')).strip()
         self.model = model or os.getenv('OPENROUTER_MODEL', 'google/gemma-7b-it:free')
         self.backup_model = backup_model or os.getenv('OPENROUTER_BACKUP_MODEL', 'mistralai/mistral-7b-instruct:free')
         self.base_url = "https://openrouter.ai/api/v1"

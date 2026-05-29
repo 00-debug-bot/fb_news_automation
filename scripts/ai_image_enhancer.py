@@ -26,7 +26,7 @@ class AIImageEnhancer:
         Args:
             openrouter_api_key: OpenRouter API key (defaults to env var)
         """
-        self.api_key = openrouter_api_key or os.getenv('OPENROUTER_API_KEY')
+        self.api_key = (openrouter_api_key or os.getenv('OPENROUTER_API_KEY', '')).strip()
         self.api_url = "https://openrouter.ai/api/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
