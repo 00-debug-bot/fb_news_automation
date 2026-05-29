@@ -56,19 +56,19 @@ class FacebookPoster:
         try:
             logger.info(f"Posting photo to Facebook: {image_path}")
             
-            # Upload photo endpoint
             url = f"{self.base_url}/{self.page_id}/photos"
             
-            with open(image_path, 'rb') as f:
-                files = {'source': f}
+            with open(image_path, 'rb') as image_file:
+                files = {'source': image_file}
                 data = {
                     'message': message,
                     'access_token': self.page_access_token
                 }
-                
                 response = requests.post(url, files=files, data=data, timeout=60)
             
-            response.raise_for_status()
+            if not response.ok:
+                logger.error(f"Facebook API error {response.status_code}: {response.text}")
+                return None
             result = response.json()
             
             if 'id' in result:
