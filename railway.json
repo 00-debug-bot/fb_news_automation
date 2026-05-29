@@ -1,0 +1,21 @@
+{
+    "$schema": "https://railway.app/railway.schema.json",
+    "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "Dockerfile"
+    },
+    "deploy": {
+        "startCommand": "python scripts/web_server.py",
+        "healthcheckPath": "/health",
+        "healthcheckTimeout": 30,
+        "restartPolicyType": "ON_FAILURE",
+        "restartPolicyMaxRetries": 3
+    },
+    "variables": {
+        "PYTHONPATH": "/app",
+        "STORAGE_DIR": "/app/storage",
+        "OUTPUT_DIR": "/app/output",
+        "LOG_DIR": "/app/logs",
+        "CONFIG_PATH": "/app/config/config.json"
+    }
+}

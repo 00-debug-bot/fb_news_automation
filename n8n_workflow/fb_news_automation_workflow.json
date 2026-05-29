@@ -1,0 +1,268 @@
+{
+    "name": "FB News Automation",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "cron-trigger",
+            "name": "Every 30 Minutes",
+            "type": "n8n-nodes-base.cron",
+            "typeVersion": 1,
+            "position": [
+                240,
+                300
+            ],
+            "notes": "Triggers the workflow every 30 minutes"
+        },
+        {
+            "parameters": {
+                "jsCode": "// Initialize the automation system\nconst { exec } = require('child_process');\nconst path = require('path');\nconst fs = require('fs');\n\n// Set up environment variables\nprocess.env.NEWSAPI_KEY = process.env.NEWSAPI_KEY || $vars.NEWSAPI_KEY;\nprocess.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || $vars.OPENROUTER_API_KEY;\nprocess.env.FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || $vars.FB_PAGE_ACCESS_TOKEN;\nprocess.env.FB_PAGE_ID = process.env.FB_PAGE_ID || $vars.FB_PAGE_ID;\nprocess.env.STORAGE_DIR = process.env.STORAGE_DIR || '/tmp/storage';\nprocess.env.OUTPUT_DIR = process.env.OUTPUT_DIR || '/tmp/output';\nprocess.env.LOG_DIR = process.env.LOG_DIR || '/tmp/logs';\n\n// Create necessary directories\n[process.env.STORAGE_DIR, process.env.OUTPUT_DIR, process.env.LOG_DIR].forEach(dir => {\n  if (!fs.existsSync(dir)) {\n    fs.mkdirSync(dir, { recursive: true });\n  }\n});\n\nreturn [{ json: { message: 'Environment prepared', timestamp: new Date().toISOString() } }];"
+            },
+            "id": "prepare-env",
+            "name": "Prepare Environment",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                460,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const { exec } = require('child_process');\nconst util = require('util');\nconst execPromise = util.promisify(exec);\n\nconst pythonScript = process.env.PYTHON_SCRIPT_PATH || '/app/scripts/main.py';\n\ntry {\n  // Run the Python automation script\n  const { stdout, stderr } = await execPromise(`python3 ${pythonScript}`);\n  \n  // Parse the JSON output from the script\n  let results;\n  const jsonMatch = stdout.match(/AUTOMATION RESULTS:[\\s\\S]*/);\n  if (jsonMatch) {\n    results = JSON.parse(jsonMatch[0].replace('AUTOMATION RESULTS:', '').trim());\n  } else {\n    results = {\n      success: true,\n      message: stdout,\n      errors: stderr ? [stderr] : []\n    };\n  }\n  \n  return [{ json: results }];\n} catch (error) {\n  return [{ \n    json: { \n      success: false, \n      error: error.message,\n      timestamp: new Date().toISOString()\n    } \n  }];\n}"
+            },
+            "id": "run-automation",
+            "name": "Run Python Automation",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                680,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict"
+                    },
+                    "conditions": [
+                        {
+                            "id": "check-errors",
+                            "leftValue": "={{ $json.errors }}",
+                            "rightValue": [],
+                            "operator": {
+                                "type": "array",
+                                "operation": "notEmpty"
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                }
+            },
+            "id": "check-errors",
+            "name": "Check for Errors",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Log successful results\nconst results = $input.first().json;\n\nconsole.log('Automation cycle completed successfully!');\nconsole.log(`Trends found: ${results.trends_found || 0}`);\nconsole.log(`Posts created: ${results.posts_created || 0}`);\nconsole.log(`Facebook posts: ${results.facebook_posts || 0}`);\n\nif (results.posts && results.posts.length > 0) {\n  results.posts.forEach((post, index) => {\n    console.log(`\\nPost ${index + 1}:`);\n    console.log(`  Topic: ${post.topic}`);\n    console.log(`  Headline: ${post.headline}`);\n    console.log(`  Image: ${post.image_path}`);\n    if (post.facebook_post_id) {\n      console.log(`  FB Post ID: ${post.facebook_post_id}`);\n    }\n  });\n}\n\nreturn [{ json: { \n  status: 'success', \n  message: 'Automation completed successfully',\n  ...results \n}}];"
+            },
+            "id": "log-success",
+            "name": "Log Success",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                180
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Log error details\nconst errorData = $input.first().json;\n\nconsole.error('Automation cycle completed with errors!');\nconsole.error(`Errors: ${JSON.stringify(errorData.errors, null, 2)}`);\n\n// Format error message for notification\nconst errorMessage = errorData.errors.join('\\n');\n\nreturn [{ json: { \n  status: 'error', \n  message: 'Automation completed with errors',\n  errors: errorData.errors,\n  errorSummary: errorMessage\n}}];"
+            },
+            "id": "log-error",
+            "name": "Log Error",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1120,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Prepare summary for notification\nconst data = $input.first().json;\n\nconst summary = {\n  timestamp: new Date().toISOString(),\n  status: data.status,\n  trendsFound: data.trends_found || 0,\n  postsCreated: data.posts_created || 0,\n  facebookPosts: data.facebook_posts || 0,\n  errors: data.errors || [],\n  posts: data.posts || []\n};\n\nreturn [{ json: summary }];"
+            },
+            "id": "prepare-notification",
+            "name": "Prepare Notification Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1340,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $vars.WEBHOOK_URL || 'https://your-webhook-endpoint.com/notify' }}",
+                "sendHeaders": {
+                    "header": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "bodyParameters": {
+                    "body": [
+                        {
+                            "name": "timestamp",
+                            "value": "={{ $json.timestamp }}"
+                        },
+                        {
+                            "name": "status",
+                            "value": "={{ $json.status }}"
+                        },
+                        {
+                            "name": "trends_found",
+                            "value": "={{ $json.trendsFound }}"
+                        },
+                        {
+                            "name": "posts_created",
+                            "value": "={{ $json.postsCreated }}"
+                        },
+                        {
+                            "name": "facebook_posts",
+                            "value": "={{ $json.facebookPosts }}"
+                        },
+                        {
+                            "name": "errors",
+                            "value": "={{ JSON.stringify($json.errors) }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "send-notification",
+            "name": "Send Notification (Optional)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1560,
+                300
+            ],
+            "notes": "Optional: Send notifications to external service"
+        }
+    ],
+    "pinData": {},
+    "connections": {
+        "Every 30 Minutes": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Environment",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Environment": {
+            "main": [
+                [
+                    {
+                        "node": "Run Python Automation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Run Python Automation": {
+            "main": [
+                [
+                    {
+                        "node": "Check for Errors",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check for Errors": {
+            "main": [
+                [
+                    {
+                        "node": "Log Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Log Error",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log Success": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Notification Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log Error": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Notification Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Notification Data": {
+            "main": [
+                [
+                    {
+                        "node": "Send Notification (Optional)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": true,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "fb-news-automation-v1",
+    "meta": {
+        "instanceId": "fb-news-automation"
+    },
+    "keys": [],
+    "tags": [
+        {
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z",
+            "id": "automation",
+            "name": "automation"
+        }
+    ]
+}

@@ -1,0 +1,47 @@
+# Core dependencies for FB News Automation System
+# Free tier compatible packages
+
+# Google Trends
+pytrends>=4.9.2
+
+# News API client
+newsapi-python>=0.2.7
+
+# HTTP requests
+requests>=2.31.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Database
+# sqlite3 (built-in)
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Logging enhancements
+colorlog>=6.7.0
+
+# JSON schema validation
+jsonschema>=4.19.0
+
+# Retry logic
+tenacity>=8.2.3
+
+# Date/time handling
+python-dateutil>=2.8.2
+
+# OpenRouter API (uses requests)
+# No additional package needed
+
+# Facebook SDK (optional, we use requests)
+# facebook-sdk>=3.1.0
+
+# For n8n webhook handling
+flask>=3.0.0
+
+# For scheduled tasks
+apscheduler>=3.10.4
+
+# For image downloading with retry
+urllib3>=2.0.7
