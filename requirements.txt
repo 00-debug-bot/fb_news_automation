@@ -4,8 +4,8 @@
 # Google Trends
 pytrends>=4.9.2
 
-# News API client
-newsapi-python>=0.2.7
+# NewsData.io API (uses requests directly — no extra package needed)
+# newsapi-python (removed — using NewsData.io as primary source)
 
 # HTTP requests
 requests>=2.31.0

@@ -1,6 +1,6 @@
 """
 News Fetcher Module
-Fetches latest news articles using NewsAPI
+Fetches latest news articles using NewsData.io (primary) with fallback to NewsAPI
 """
 
 import logging
@@ -9,101 +9,54 @@ import os
 import requests
 from urllib.parse import quote_plus
 from datetime import datetime, timedelta
-from newsapi import NewsApiClient
-from newsapi.newsapi_exception import NewsAPIException
 
 logger = logging.getLogger(__name__)
 
 
 class NewsFetcher:
-    """Fetch news articles from NewsAPI"""
+    """Fetch news articles — primary source: NewsData.io, fallback: NewsAPI"""
     
-    def __init__(self, api_key: str = None, newsdata_api_key: str = None):
+    def __init__(self, newsdata_api_key: str = None, newsapi_key: str = None):
         """
-        Initialize NewsAPI client
+        Initialize news fetcher
         
         Args:
-            api_key: NewsAPI key (or set NEWSAPI_KEY environment variable)
-            newsdata_api_key: NewsData.io API key
+            newsdata_api_key: NewsData.io API key (or set NEWSDATA_API_KEY env var)
+            newsapi_key: NewsAPI key fallback (or set NEWSAPI_KEY env var)
         """
-        self.api_key = api_key or os.getenv('NEWSAPI_KEY')
-        self.newsdata_api_key = newsdata_api_key or os.getenv('NEWSDATA_API_KEY', 'pub_2b3957a1856a454484d792770c04d4e8')
+        self.newsdata_api_key = newsdata_api_key or os.getenv('NEWSDATA_API_KEY')
+        self.newsapi_key = newsapi_key or os.getenv('NEWSAPI_KEY')
         
-        if not self.api_key:
-            logger.warning("NewsAPI key not provided. Some features may be limited.")
-            self.client = None
-        else:
-            self.client = NewsApiClient(api_key=self.api_key)
-            logger.info("NewsAPI client initialized")
-    
-    def search_articles(self, query: str, language: str = 'en', 
-                       country: str = 'us', page_size: int = 5,
-                       sort_by: str = 'relevancy') -> List[Dict[str, str]]:
-        """
-        Search for articles related to a query
-        """
-        articles = []
-        if self.client:
-            try:
-                from_date = (datetime.utcnow() - timedelta(days=3)).strftime('%Y-%m-%dT%H:%M:%S')
-                to_date = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-                
-                logger.info(f"Searching articles for: '{query}' via NewsAPI")
-                
-                all_articles = self.client.get_everything(
-                    q=query,
-                    from_param=from_date,
-                    to=to_date,
-                    language=language,
-                    sort_by=sort_by,
-                    page_size=page_size
-                )
-                
-                for article in all_articles['articles']:
-                    if article['title'] == '[Removed]':
-                        continue
-                    
-                    article_data = {
-                        'title': article.get('title', ''),
-                        'description': article.get('description', ''),
-                        'url': article.get('url', ''),
-                        'image_url': article.get('urlToImage', ''),
-                        'published_at': article.get('publishedAt', ''),
-                        'source': article.get('source', {}).get('name', ''),
-                        'author': article.get('author', ''),
-                        'query': query,
-                        'fetched_at': datetime.utcnow().isoformat()
-                    }
-                    
-                    if article_data['title']:
-                        articles.append(article_data)
-                
-                if articles:
-                    logger.info(f"Found {len(articles)} articles for '{query}' via NewsAPI")
-                    return articles
-                
-            except NewsAPIException as e:
-                logger.error(f"NewsAPI error: {e}")
-            except Exception as e:
-                logger.error(f"Error fetching articles from NewsAPI: {e}")
-
-        # Fallback to NewsData.io
-        logger.info(f"Falling back to NewsData.io for query: '{query}'")
-        return self._fetch_from_newsdata(query, language, country, page_size)
-    
-    def _fetch_from_newsdata(self, query: str, language: str = 'en', country: str = 'us', page_size: int = 5) -> List[Dict[str, str]]:
         if not self.newsdata_api_key:
-            logger.error("NewsData.io API key not available for fallback.")
+            logger.warning("NewsData.io API key not set. Set NEWSDATA_API_KEY environment variable.")
+        else:
+            logger.info("NewsData.io client initialized")
+    
+    def _fetch_from_newsdata(self, query: str, language: str = 'en', country: str = 'in', page_size: int = 5) -> List[Dict[str, str]]:
+        """Fetch articles from NewsData.io"""
+        if not self.newsdata_api_key:
+            logger.warning("NewsData.io API key not set. Cannot fetch.")
             return []
             
         try:
-            url = f"https://newsdata.io/api/1/news?apikey={self.newsdata_api_key}&q={quote_plus(query)}&language={language}"
+            url = (
+                f"https://newsdata.io/api/1/news"
+                f"?apikey={self.newsdata_api_key}"
+                f"&q={quote_plus(query)}"
+                f"&language={language}"
+                f"&country={country}"
+                f"&size={page_size}"
+            )
             response = requests.get(url)
             response.raise_for_status()
             data = response.json()
             
             articles = []
             for item in data.get('results', [])[:page_size]:
+                # Skip removed/invalid entries
+                if item.get('title') == '[Removed]' or not item.get('title'):
+                    continue
+                
                 article_data = {
                     'title': item.get('title', ''),
                     'description': item.get('description', ''),
@@ -125,24 +78,107 @@ class NewsFetcher:
             logger.error(f"Error fetching from NewsData.io: {e}")
             return []
     
-    def get_top_headlines(self, query: str, country: str = 'us', 
+    def _fetch_from_newsapi(self, query: str, language: str = 'en', page_size: int = 5) -> List[Dict[str, str]]:
+        """Fallback: Fetch articles from NewsAPI"""
+        if not self.newsapi_key:
+            logger.warning("NewsAPI key not set. Fallback unavailable.")
+            return []
+        
+        try:
+            from_date = (datetime.utcnow() - timedelta(days=3)).strftime('%Y-%m-%d')
+            url = (
+                f"https://newsapi.org/v2/everything"
+                f"?q={quote_plus(query)}"
+                f"&from={from_date}"
+                f"&language={language}"
+                f"&sortBy=relevancy"
+                f"&pageSize={page_size}"
+                f"&apiKey={self.newsapi_key}"
+            )
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            articles = []
+            for article in data.get('articles', []):
+                if article.get('title') == '[Removed]' or not article.get('title'):
+                    continue
+                
+                article_data = {
+                    'title': article.get('title', ''),
+                    'description': article.get('description', ''),
+                    'url': article.get('url', ''),
+                    'image_url': article.get('urlToImage', ''),
+                    'published_at': article.get('publishedAt', ''),
+                    'source': article.get('source', {}).get('name', ''),
+                    'author': article.get('author', ''),
+                    'query': query,
+                    'fetched_at': datetime.utcnow().isoformat()
+                }
+                if article_data['title']:
+                    articles.append(article_data)
+            
+            logger.info(f"Found {len(articles)} articles for '{query}' via NewsAPI (fallback)")
+            return articles
+            
+        except Exception as e:
+            logger.error(f"Error fetching from NewsAPI fallback: {e}")
+            return []
+    
+    def search_articles(self, query: str, language: str = 'en', 
+                       country: str = 'in', page_size: int = 5,
+                       sort_by: str = 'relevancy') -> List[Dict[str, str]]:
+        """
+        Search for articles related to a query
+        
+        Args:
+            query: Search term
+            language: Language code (default: 'en')
+            country: Country code (default: 'in' for India)
+            page_size: Number of results to return
+            sort_by: Sort method
+        """
+        # Primary: NewsData.io
+        articles = self._fetch_from_newsdata(query, language, country, page_size)
+        if articles:
+            return articles
+        
+        # Fallback: NewsAPI
+        logger.info(f"Falling back to NewsAPI for query: '{query}'")
+        return self._fetch_from_newsapi(query, language, page_size)
+    
+    def get_top_headlines(self, query: str, country: str = 'in', 
                          page_size: int = 5) -> List[Dict[str, str]]:
         """
-        Get top headlines for a query
+        Get top headlines for a query (India-focused)
+        
+        Args:
+            query: Search term
+            country: Country code (default: 'in' for India)
+            page_size: Number of results
         """
-        articles = []
-        if self.client:
+        # Use NewsData.io search as top headlines equivalent
+        articles = self._fetch_from_newsdata(query, 'en', country, page_size)
+        if articles:
+            return articles
+        
+        # Fallback to NewsAPI headlines
+        if self.newsapi_key:
             try:
-                logger.info(f"Fetching top headlines for: '{query}' via NewsAPI")
-                
-                headlines = self.client.get_top_headlines(
-                    q=query,
-                    country=country,
-                    page_size=page_size
+                url = (
+                    f"https://newsapi.org/v2/top-headlines"
+                    f"?q={quote_plus(query)}"
+                    f"&country={country}"
+                    f"&pageSize={page_size}"
+                    f"&apiKey={self.newsapi_key}"
                 )
+                response = requests.get(url)
+                response.raise_for_status()
+                data = response.json()
                 
-                for article in headlines['articles']:
-                    if article['title'] == '[Removed]':
+                articles = []
+                for article in data.get('articles', []):
+                    if article.get('title') == '[Removed]' or not article.get('title'):
                         continue
                     
                     article_data = {
@@ -155,21 +191,15 @@ class NewsFetcher:
                         'query': query,
                         'fetched_at': datetime.utcnow().isoformat()
                     }
-                    
                     if article_data['title']:
                         articles.append(article_data)
                 
                 if articles:
                     return articles
-                
-            except NewsAPIException as e:
-                logger.error(f"NewsAPI error: {e}")
             except Exception as e:
                 logger.error(f"Error fetching headlines from NewsAPI: {e}")
-
-        # Fallback to NewsData.io
-        logger.info(f"Falling back to NewsData.io for headlines: '{query}'")
-        return self._fetch_from_newsdata(query, 'en', country, page_size)
+        
+        return []
     
     def get_best_article(self, query: str) -> Optional[Dict[str, str]]:
         """
@@ -226,7 +256,6 @@ class NewsFetcher:
         # Check image URL is valid (basic check)
         image_url = article.get('image_url', '')
         if image_url:
-            # Should start with http
             if not image_url.startswith(('http://', 'https://')):
                 return False
         
@@ -237,14 +266,9 @@ def main():
     """Test the news fetcher"""
     logging.basicConfig(level=logging.INFO)
     
-    # Will use NEWSAPI_KEY from environment
     fetcher = NewsFetcher()
     
-    if not fetcher.client:
-        print("NewsAPI key not set. Please set NEWSAPI_KEY environment variable.")
-        return
-    
-    test_queries = ['breaking news', 'politics', 'technology']
+    test_queries = ['breaking news India', 'politics', 'technology', 'Bollywood', 'cricket']
     
     for query in test_queries:
         print(f"\nSearching for: {query}")

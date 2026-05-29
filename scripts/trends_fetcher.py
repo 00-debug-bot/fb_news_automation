@@ -1,6 +1,6 @@
 """
 Trends Fetcher Module
-Fetches top trending USA Google Trends topics using PyTrends
+Fetches top trending Indian Google Trends topics using PyTrends
 """
 
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrendsFetcher:
-    """Fetch trending topics from Google Trends for USA region"""
+    """Fetch trending topics from Google Trends for India region"""
     
     def __init__(self):
         """Initialize PyTrends client"""
@@ -25,7 +25,7 @@ class TrendsFetcher:
     def _init_client(self):
         """Initialize or reinitialize the PyTrends client"""
         try:
-            self.pytrends = TrendReq(hl='en-US', tz=360)  # US timezone
+            self.pytrends = TrendReq(hl='en-IN', tz=330)  # India timezone (UTC+5:30)
             logger.info("PyTrends client initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize PyTrends client: {e}")
@@ -33,7 +33,7 @@ class TrendsFetcher:
     
     def fetch_trending_topics(self, limit: int = 10) -> List[Dict[str, str]]:
         """
-        Fetch top trending topics from Google Trends for USA
+        Fetch top trending topics from Google Trends for India
         
         Args:
             limit: Maximum number of trends to return
@@ -45,11 +45,8 @@ class TrendsFetcher:
             # Add random delay to avoid rate limiting
             time.sleep(random.uniform(1, 3))
             
-            # Get trending searches
-            self.pytrends.trending_searches(pn='united_states')
-            
-            # Get the trending data
-            trending_df = self.pytrends.trending_searches(pn='united_states')
+            # Get trending searches for India
+            trending_df = self.pytrends.trending_searches(pn='india')
             
             if trending_df.empty:
                 logger.warning("No trending topics found")
@@ -62,7 +59,7 @@ class TrendsFetcher:
                     'traffic': str(row[1]) if len(row) > 1 else 'N/A',
                     'fetched_at': datetime.utcnow().isoformat(),
                     'source': 'google_trends',
-                    'region': 'US'
+                    'region': 'IN'
                 }
                 trends.append(trend_data)
                 logger.info(f"Fetched trend: {trend_data['title']}")
@@ -110,7 +107,17 @@ class TrendsFetcher:
             'space', 'nasa', 'launch', 'mission', 'discovery',
             'sports', 'championship', 'finals', 'trade', 'signing',
             'celebrity', 'award', 'oscar', 'grammy', 'emmy',
-            'international', 'global', 'world', 'foreign', 'diplomatic'
+            'international', 'global', 'world', 'foreign', 'diplomatic',
+            # India-specific keywords
+            'modi', 'bjp', 'congress', 'delhi', 'mumbai', 'bangalore',
+            'karnataka', 'maharashtra', 'uttar pradesh', 'tamil nadu',
+            'west bengal', 'gujarat', 'rajasthan', 'kerala', 'punjab',
+            'haryana', 'goa', 'assam', 'bihar', 'odisha',
+            'aadhaar', 'gst', 'demonetization', 'ayodhya', 'kashmir',
+            'nrc', 'caa', 'farm bill', 'agriculture', 'farmers',
+            'ipl', 'cricket', 'bollywood', 'tollywood', 'kollywood',
+            'sachin', 'kohli', 'dhoni', 'amitabh', 'shah rukh',
+            'deepika', 'priyanka', 'alia', 'ranveer', 'akshay'
         ]
         
         filtered = []
@@ -121,12 +128,9 @@ class TrendsFetcher:
             is_news_related = any(keyword in title_lower for keyword in news_keywords)
             
             # Also include if it looks like a proper news topic
-            # (contains multiple words, proper nouns, etc.)
             if not is_news_related:
-                # Check if it's a multi-word topic that could be news
                 words = trend['title'].split()
                 if len(words) >= 2:
-                    # Check for capitalized words (proper nouns)
                     capitalized = sum(1 for w in words if w[0].isupper())
                     if capitalized >= 1:
                         is_news_related = True
@@ -144,7 +148,7 @@ class TrendsFetcher:
     
     def get_daily_trending(self, limit: int = 5) -> List[Dict[str, str]]:
         """
-        Get daily trending searches
+        Get daily trending searches (India)
         
         Args:
             limit: Maximum number of trends to return
@@ -155,7 +159,6 @@ class TrendsFetcher:
         try:
             time.sleep(random.uniform(1, 3))
             
-            # Get daily trending searches
             daily_trends = self.pytrends.daily_trends(expiry=0, limit=limit)
             
             if daily_trends.empty:
@@ -169,7 +172,7 @@ class TrendsFetcher:
                     'description': str(row['description']) if 'description' in row else '',
                     'fetched_at': datetime.utcnow().isoformat(),
                     'source': 'google_trends_daily',
-                    'region': 'US'
+                    'region': 'IN'
                 }
                 trends.append(trend_data)
             
@@ -185,7 +188,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
     fetcher = TrendsFetcher()
     
-    print("Fetching trending topics...")
+    print("Fetching trending topics for India...")
     trends = fetcher.fetch_trending_topics(limit=10)
     
     if trends:
