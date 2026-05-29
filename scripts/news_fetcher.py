@@ -24,7 +24,7 @@ class NewsFetcher:
             newsdata_api_key: NewsData.io API key (or set NEWSDATA_API_KEY env var)
             newsapi_key: NewsAPI key fallback (or set NEWSAPI_KEY env var)
         """
-        self.newsdata_api_key = newsdata_api_key or os.getenv('NEWSDATA_API_KEY')
+        self.newsdata_api_key = newsdata_api_key or os.getenv('NEWSDATA_API_KEY', 'pub_2b3957a1856a454484d792770c04d4e8')
         self.newsapi_key = newsapi_key or os.getenv('NEWSAPI_KEY')
         
         if not self.newsdata_api_key:
