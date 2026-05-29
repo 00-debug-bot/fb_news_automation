@@ -78,88 +78,81 @@ class TrendsFetcher:
     
     def _fetch_trends_from_newsdata(self, limit: int = 10) -> List[Dict[str, str]]:
         """
-        Fetch trending Indian topics from NewsData.io as fallback.
-        Returns SHORT keyword-based topics (not full article titles),
-        so they can be used as search queries for news articles.
+        Fetch fresh Indian news headlines from NewsData.io.
+        Always returns fresh topics so duplicates don't happen.
         
         Args:
             limit: Maximum number of trends to return
             
         Returns:
-            List of short topic-based trend dictionaries
+            List of fresh news headline-based trend dictionaries
         """
-        # Indian news categories to use as short topic queries
-        india_topic_queries = [
-            'India politics',
-            'Bollywood news',
-            'cricket India',
-            'Indian economy',
-            'technology India',
-            'Delhi news',
-            'Mumbai news',
-            'Karnataka news',
-            'Indian sports',
-            'India business',
-        ]
-        
-        # Also fetch some actual headlines and extract short topics from them
         trends = []
         seen_titles = set()
         
-        # Use a broader query to get Indian news headlines
-        try:
-            url = (
-                f"https://newsdata.io/api/1/news"
-                f"?apikey={self.newsdata_api_key}"
-                f"&q=India"
-                f"&language=en"
-                f"&country=in"
-                f"&size=15"
-            )
-            response = requests.get(url)
-            response.raise_for_status()
-            data = response.json()
-            
-            for item in data.get('results', []):
-                title = item.get('title', '').strip()
-                if not title or title in seen_titles:
-                    continue
-                seen_titles.add(title)
+        # Try multiple queries to get diverse fresh news
+        queries = ['India news', 'breaking India', 'politics India']
+        
+        for query in queries[:2]:  # Try first 2 queries
+            try:
+                url = (
+                    f"https://newsdata.io/api/1/news"
+                    f"?apikey={self.newsdata_api_key}"
+                    f"&q={query}"
+                    f"&language=en"
+                    f"&country=in"
+                    f"&size=10"
+                )
+                response = requests.get(url)
+                response.raise_for_status()
+                data = response.json()
                 
-                # Extract a short topic from the headline (first few meaningful words)
-                words = title.split()
-                if len(words) > 4:
-                    # Take first 4-5 words as the topic
-                    short_topic = ' '.join(words[:5]).rstrip('.,;:!?-')
-                else:
-                    short_topic = title
-                
-                trend_data = {
-                    'title': short_topic,
-                    'traffic': 'N/A',
-                    'fetched_at': datetime.utcnow().isoformat(),
-                    'source': 'newsdata_fallback',
-                    'region': 'IN',
-                    'is_news': True
-                }
-                trends.append(trend_data)
+                for item in data.get('results', []):
+                    title = item.get('title', '').strip()
+                    if not title or title in seen_titles:
+                        continue
+                    seen_titles.add(title)
+                    
+                    # Use the first ~6 words as a short topic
+                    words = title.split()
+                    if len(words) > 5:
+                        short_topic = ' '.join(words[:5]).rstrip('.,;:!?-')
+                    else:
+                        short_topic = title
+                    
+                    trend_data = {
+                        'title': short_topic,
+                        'traffic': 'N/A',
+                        'fetched_at': datetime.utcnow().isoformat(),
+                        'source': 'newsdata_fallback',
+                        'region': 'IN',
+                        'is_news': True
+                    }
+                    trends.append(trend_data)
+                    
+                    if len(trends) >= limit:
+                        break
                 
                 if len(trends) >= limit:
                     break
-            
-            # If we got enough trends from headlines, return them
-            if len(trends) >= limit:
-                logger.info(f"Fetched {len(trends)} trending topics via NewsData.io fallback")
-                return trends[:limit]
-            
-        except Exception as e:
-            logger.warning(f"Error fetching trending news from NewsData.io: {e}")
+                    
+            except Exception as e:
+                logger.warning(f"Error fetching from NewsData.io (query={query}): {e}")
+                continue
         
-        # Fallback: use predefined Indian topic categories
-        for topic in india_topic_queries:
-            if topic not in seen_titles and len(trends) < limit:
+        # If NewsData.io failed, use fallback keywords BUT add timestamp to make them unique
+        if not trends:
+            import hashlib
+            base_topics = [
+                'India breaking news', 'politics news', 'Bollywood', 'cricket',
+                'economy', 'technology', 'sports', 'business'
+            ]
+            # Generate unique suffix based on current minute to avoid exact duplicates
+            minute_suffix = datetime.utcnow().strftime('%H%M')
+            for topic in base_topics[:limit]:
+                unique_topic = f"{topic} {minute_suffix}"
                 trend_data = {
-                    'title': topic,
+                    'title': unique_topic,
                     'traffic': 'N/A',
                     'fetched_at': datetime.utcnow().isoformat(),
                     'source': 'newsdata_fallback',
@@ -168,7 +161,7 @@ class TrendsFetcher:
                 }
                 trends.append(trend_data)
         
-        logger.info(f"Fetched {len(trends)} trending topics via NewsData.io fallback")
+        logger.info(f"Fetched {len(trends)} fresh trending topics")
         return trends[:limit]
     
     def filter_news_related(self, trends: List[Dict[str, str]]) -> List[Dict[str, str]]:

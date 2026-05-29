@@ -20,6 +20,7 @@ from scripts.trends_fetcher import TrendsFetcher
 from scripts.news_fetcher import NewsFetcher
 from scripts.headline_generator import HeadlineGenerator
 from scripts.image_processor import ImageProcessor
+from scripts.ai_image_enhancer import AIImageEnhancer
 from scripts.storage import StorageManager
 from scripts.facebook_poster import FacebookPoster
 
@@ -63,6 +64,7 @@ class NewsAutomationSystem:
         self.news_fetcher = NewsFetcher()
         self.headline_generator = HeadlineGenerator()
         self.image_processor = ImageProcessor()
+        self.ai_enhancer = AIImageEnhancer()
         self.storage = StorageManager()
         self.facebook_poster = FacebookPoster()
         
@@ -233,6 +235,7 @@ class NewsAutomationSystem:
             self.logger.warning(f"No image URL for: {topic_title}")
             return None
         
+        # First create standard news card
         image_path = self.image_processor.process_from_url(
             image_url=image_url,
             headline=headline
@@ -241,6 +244,30 @@ class NewsAutomationSystem:
         if not image_path:
             self.logger.warning(f"Failed to create news card for: {topic_title}")
             return None
+        
+        # Step 3.5: Enhance with AI if API key available
+        ai_image_path = None
+        if os.getenv('OPENROUTER_API_KEY'):
+            try:
+                self.logger.info("Attempting AI image enhancement...")
+                from PIL import Image
+                original_image = Image.open(image_path)
+                ai_image = self.ai_enhancer.generate_news_image(headline)
+                if ai_image:
+                    # Save AI image
+                    from datetime import datetime
+                    ai_filename = f"ai_enhanced_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.jpg"
+                    ai_image_path = self.ai_enhancer.save_image(ai_image, ai_filename)
+                    self.logger.info(f"AI image generated: {ai_image_path}")
+                    
+                    # Use AI image for Facebook post
+                    image_path = ai_image_path
+                else:
+                    self.logger.warning("AI image generation failed, using original")
+            except Exception as e:
+                self.logger.warning(f"AI enhancement failed: {e}, using original image")
+        
+        self.logger.info(f"Created news card: {image_path}")
         
         self.logger.info(f"Created news card: {image_path}")
         
