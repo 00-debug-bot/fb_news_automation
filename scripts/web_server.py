@@ -259,6 +259,7 @@ def not_found(e):
             'GET /status',
             'GET /topics',
             'GET /trends',
+            'GET /run',
             'POST /run',
             'POST /preview',
             'POST /cleanup'
