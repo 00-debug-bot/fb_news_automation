@@ -27,7 +27,7 @@ from scripts.facebook_poster import FacebookPoster
 def setup_logging(log_dir: str = None):
     """Setup logging configuration"""
     if log_dir is None:
-        log_dir = os.getenv('LOG_DIR', '../logs')
+        log_dir = os.getenv('LOG_DIR', '/app/logs')
     
     os.makedirs(log_dir, exist_ok=True)
     
