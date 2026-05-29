@@ -67,7 +67,7 @@ class NewsAutomationSystem:
         self.facebook_poster = FacebookPoster()
         
         # Configuration
-        self.max_trends_to_process = self.config.get('max_trends', 3)
+        self.max_trends_to_process = self.config.get('max_trends', 1)
         self.duplicate_check_hours = self.config.get('duplicate_hours', 48)
         
         env_skip = os.getenv('SKIP_FACEBOOK', '').lower()
