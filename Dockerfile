@@ -23,7 +23,7 @@ FROM python:3.11-slim as runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get purge -y --auto-remove
@@ -59,3 +59,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Default command - run the automation
 CMD ["python", "scripts/main.py"]
+
