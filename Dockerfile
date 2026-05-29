@@ -21,10 +21,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Stage 2: Runtime stage
 FROM python:3.11-slim as runtime
 
-# Install runtime dependencies
+# Install runtime dependencies and fonts
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
+    fonts-dejavu-core \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get purge -y --auto-remove
 
