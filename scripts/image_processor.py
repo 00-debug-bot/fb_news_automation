@@ -141,11 +141,11 @@ class ImageProcessor:
         draw.rounded_rectangle([(bx, by), (bx + bw, by + bh)], radius=5, fill=self.DARK_RED)
         draw.text((bx + 14, by + (bh - th) // 2 - 1), badge_text, fill=self.WHITE, font=badge_font)
         
-        # 7. Headline (bold RED with black outline, centered in bottom area)
-        h_font = self._get_font(56, bold=True)
-        max_text_w = w - 80
+        # 7. Headline (bold RED with black outline, very large - centered in bottom area)
+        h_font = self._get_font(110, bold=True)
+        max_text_w = w - 60
         lines = self._wrap_text(draw, headline, h_font, max_text_w)
-        line_h = 70
+        line_h = 130
         total_h = len(lines) * line_h
         
         # Position: centered vertically in the lower 40% of the image
